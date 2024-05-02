@@ -5,6 +5,7 @@ go 1.22.2
 require (
 	github.com/IBM/sarama v1.43.2
 	github.com/gin-gonic/gin v1.9.1
+	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 )
 

@@ -2,97 +2,49 @@ package kafka
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
 
+	"events_consumer/internal/config"
 	"events_consumer/internal/models"
+
+	"github.com/google/uuid"
 
 	"github.com/IBM/sarama"
 )
 
-const (
-	ConsumerGroup      = "notifications-group"
-	ConsumerTopic      = "notifications"
-	ConsumerPort       = ":8081"
-	KafkaServerAddress = "localhost:9093"
-)
-
-// ====== NOTIFICATION STORAGE ======
-// type UserNotifications map[string][]models.Notification
-
-// type NotificationStore struct {
-// 	data UserNotifications
-// 	mu   sync.RWMutex
-// }
-
-// func (ns *NotificationStore) Add(userID string,
-// 	notification models.Notification) {
-// 	ns.mu.Lock()
-// 	defer ns.mu.Unlock()
-// 	ns.data[userID] = append(ns.data[userID], notification)
-// }
-
-// func (ns *NotificationStore) Get(userID string) []models.Notification {
-// 	ns.mu.RLock()
-// 	defer ns.mu.RUnlock()
-// 	return ns.data[userID]
-// }
-
-// ============== KAFKA RELATED FUNCTIONS ==============
 type Consumer struct {
-	// store *NotificationStore
 }
 
 func (*Consumer) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (*Consumer) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
-func (consumer *Consumer) ConsumeClaim(
-	sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for msg := range claim.Messages() {
-		// value := string(msg.Value)
-		// fmt.Printf("value %#v\n", value)
-		// userID := string(msg.Key)
-		// fmt.Printf("userID %#v\n", userID)
-		var notification models.Notification
-		err := json.Unmarshal(msg.Value, &notification)
-		if err != nil {
-			log.Printf("failed to unmarshal notification: %v", err)
-			continue
-		}
-		fmt.Printf("notification %#v\n", notification)
-		// consumer.store.Add(userID, notification)
-		sess.MarkMessage(msg, "")
-	}
-	return nil
+func ConsumerMain(cfg *config.Config) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	setupConsumerGroup(ctx, cfg)
 }
 
-func initializeConsumerGroup() (sarama.ConsumerGroup, error) {
-	config := sarama.NewConfig()
-
-	consumerGroup, err := sarama.NewConsumerGroup(
-		[]string{KafkaServerAddress}, ConsumerGroup, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize consumer group: %w", err)
-	}
-
-	return consumerGroup, nil
-}
-
-func setupConsumerGroup(ctx context.Context) {
-	// func setupConsumerGroup(ctx context.Context, store *NotificationStore) {
-	consumerGroup, err := initializeConsumerGroup()
+// setupConsumerGroup sets up a Sarama consumer group to consume Kafka messages
+// and handle them with the Consumer struct.
+func setupConsumerGroup(ctx context.Context, cfg *config.Config) {
+	consumerGroup, err := initializeConsumerGroup(cfg)
 	if err != nil {
 		log.Printf("initialization error: %v", err)
+		return
 	}
 	defer consumerGroup.Close()
 
-	consumer := &Consumer{
-		// store: store,
-	}
+	// Create a new Consumer struct
+	consumer := &Consumer{}
 
+	// Loop until the context is done or the consumer returns an error
 	for {
-		err = consumerGroup.Consume(ctx, []string{ConsumerTopic}, consumer)
+		err = consumerGroup.Consume(ctx, []string{cfg.KAFKA_TOPIC}, consumer)
 		if err != nil {
 			log.Printf("error from consumer: %v", err)
 		}
@@ -102,17 +54,54 @@ func setupConsumerGroup(ctx context.Context) {
 	}
 }
 
-func ConsumerMain() {
-	// store := &NotificationStore{
-	// 	data: make(UserNotifications),
-	// }
+func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
+	config := sarama.NewConfig()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	setupConsumerGroup(ctx)
-	// go setupConsumerGroup(ctx, store)
-	defer cancel()
+	consumerGroup, err := sarama.NewConsumerGroup(
+		[]string{cfg.KAFKA_BOOTSTRAP_SERVER}, cfg.KAFKA_CONSUMER_GROUP, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize consumer group: %w", err)
+	}
 
-	fmt.Printf("Kafka CONSUMER (Group: %s) 👥📥 "+
-		"started at http://localhost%s\n", ConsumerGroup, ConsumerPort)
+	return consumerGroup, nil
+}
 
+func (consumer *Consumer) ConsumeClaim(
+	sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+
+		var kafkaMessage models.KafkaMessage
+		err := json.Unmarshal(msg.Value, &kafkaMessage)
+		if err != nil {
+			log.Printf("Ошибка при парсинге сообщения: msg = %s, err = %v", msg.Value, err)
+			continue
+		}
+
+		h := sha1.New()
+		h.Write(msg.Value)
+		sha1Hash := h.Sum(nil)
+
+		event := models.TelemetryEventRequest{
+			Id:                                 uuid.New().String(),
+			Timestamp:                          msg.Timestamp.UnixMicro(),
+			KmclBlockIccid:                     string(msg.Key),
+			EventHeaderHash:                    hex.EncodeToString(sha1Hash),
+			KmclVehicleId:                      kafkaMessage.VehicleID,
+			KmclTraceId:                        kafkaMessage.TraceID,
+			Longitude:                          kafkaMessage.Longitude,
+			Latitude:                           kafkaMessage.Latitude,
+			Altitude:                           kafkaMessage.Altitude,
+			Satellites:                         kafkaMessage.Satellites,
+			HighResolutionTotalVehicleDistance: kafkaMessage.HighResolutionTotalVehicleDistance,
+			CurrentMileage:                     kafkaMessage.CurrentMileage,
+			Ts:                                 kafkaMessage.Ts,
+			Speed:                              kafkaMessage.Speed,
+			FuelLevel:                          kafkaMessage.FuelLevel,
+			BatteryLevel:                       kafkaMessage.BatteryLevel,
+		}
+		fmt.Printf("event: %#v Type: %v\n", event, reflect.TypeOf(event))
+
+		sess.MarkMessage(msg, "")
+	}
+	return nil
 }
