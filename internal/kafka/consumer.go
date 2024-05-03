@@ -9,12 +9,13 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"events_consumer/internal/config"
 	"events_consumer/internal/models"
+	"events_consumer/internal/utils"
 
 	"github.com/IBM/sarama"
-	"github.com/google/uuid"
 )
 
 type Consumer struct {
@@ -68,6 +69,14 @@ func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
 
 func (consumer *Consumer) ConsumeClaim(
 	sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	// Создайте новый Transport с отключенной проверкой SSL
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	// Создайте клиент HTTP с настроенным Transport
+	client := &http.Client{Transport: tr}
+
 	for msg := range claim.Messages() {
 
 		var kafkaMessage models.KafkaMessage
@@ -77,17 +86,14 @@ func (consumer *Consumer) ConsumeClaim(
 			continue
 		}
 
-		event := models.VehicleStateUpdateRequest{
-			CoreVehicleId:                      uuid.New().String(),
-			Longitude:                          kafkaMessage.Longitude,
-			Latitude:                           kafkaMessage.Latitude,
-			Altitude:                           kafkaMessage.Altitude,
-			Satellites:                         kafkaMessage.Satellites,
-			HighResolutionTotalVehicleDistance: kafkaMessage.HighResolutionTotalVehicleDistance,
-			Ts:                                 kafkaMessage.Ts,
-			Speed:                              kafkaMessage.Speed,
-			FuelLevel:                          kafkaMessage.FuelLevel,
-			BatteryLevel:                       kafkaMessage.BatteryLevel,
+		x := utils.CacheMain.Get(kafkaMessage.CloudVehicleID)
+		fmt.Printf("x: %#v Type: %v\n", x, reflect.TypeOf(x))
+		if x != nil {
+			coreVehicleId := x.Value()
+			fmt.Printf("coreVehicleId: %#v Type: %v\n", coreVehicleId, reflect.TypeOf(coreVehicleId))
+			sendVstRequest(coreVehicleId, kafkaMessage, client)
+		} else {
+			fmt.Println("Не нашли элемент в кэше")
 		}
 
 		// h := sha1.New()
@@ -114,104 +120,61 @@ func (consumer *Consumer) ConsumeClaim(
 		// }
 		// fmt.Printf("eventClick: %#v Type: %v\n", eventClick, reflect.TypeOf(eventClick))
 
-		// Преобразуем структуру в JSON
-		jsonData, err := json.Marshal(event)
-		if err != nil {
-			log.Fatalf("Ошибка при маршализации JSON: %v", err)
-		}
-		fmt.Printf("jsonData: %#v Type: %v\n", string(jsonData), reflect.TypeOf(jsonData))
-
-		// Создайте новый Transport с отключенной проверкой SSL
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-
-		// Создайте клиент HTTP с настроенным Transport
-		client := &http.Client{Transport: tr}
-
-		// Создайте новый запрос GET с параметрами
-		req, err := http.NewRequest("GET", "https://api.id.public.qa.core.dpkapp.ru/vehicles_id/vehicles/", nil)
-		if err != nil {
-			fmt.Println("Error creating GET request:", err)
-		}
-
-		// Добавьте заголовок "X-Api-Key"
-		req.Header.Set("X-Api-Key", "a961554f9abc712de5d974fba22151fb")
-
-		// Добавьте параметр "page"
-		q := req.URL.Query()
-		page := "1"
-		q.Add("page", page)
-		req.URL.RawQuery = q.Encode()
-
-		// Выполните запрос
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println("Error sending GET request:", err)
-		}
-		defer resp.Body.Close()
-
-		// Прочитайте тело ответа, если это необходимо
-		// Например, для прочтения JSON ответа можно использовать json.Decoder
-
-		// Получите код статуса ответа
-		statusCode := resp.StatusCode
-		fmt.Println("Response Status Code:", statusCode)
-
-		// Читаем тело ответа
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatalf("Ошибка при чтении ответа: %v", err)
-		}
-
-		// Выводим тело ответа
-		// log.Println("Ответ от сервера:", string(body))
-
-		var coreResponse models.CoreResponse
-		coreErr := json.Unmarshal(body, &coreResponse)
-		if coreErr != nil {
-			log.Printf("Ошибка при парсинге сообщения: msg = %s, err = %v", string(body), coreErr)
-		}
-		// fmt.Printf("coreResponse: %#v Type: %v\n", coreResponse, reflect.TypeOf(coreResponse))
-
-		// Проход по всем элементам Items
-		// idCore := coreResponse.Result.Items[0].ID
-		for _, item := range coreResponse.Result.Items {
-			fmt.Println("ID:", item.ID)
-			// Здесь можно добавить вывод других полей
-			fmt.Println("---------")
-		}
-
-		// // Создаем PATCH-запрос
-		// req2, err := http.NewRequest("PATCH", "https://api.dev.vlm.dpkapp.ru/vst/states/", strings.NewReader(string(jsonData)))
-		// if err != nil {
-		// 	log.Fatalf("Ошибка при создании PATCH-запроса: %v", err)
-		// }
-
-		// // Устанавливаем заголовок Content-Type
-		// req.Header.Set("Content-Type", "application/json")
-
-		// // Отправляем запрос
-		// resp2, err := client.Do(req2)
-		// if err != nil {
-		// 	log.Fatalf("Ошибка при отправке запроса: %v", err)
-		// }
-		// defer resp2.Body.Close()
-
-		// // Получите код статуса ответа
-		// statusCode2 := resp2.StatusCode
-		// fmt.Println("Response Status Code:", statusCode2)
-
-		// // Читаем тело ответа
-		// body2, err := io.ReadAll(resp.Body)
-		// if err != nil {
-		// 	log.Fatalf("Ошибка при чтении ответа: %v", err)
-		// }
-
-		// // Выводим тело ответа
-		// log.Println("Ответ от сервера:", string(body2))
-
 		sess.MarkMessage(msg, "")
 	}
+	return nil
+}
+
+func sendVstRequest(coreVehicleId string, kafkaMessage models.KafkaMessage, client *http.Client) error {
+
+	event := models.VehicleStateUpdateRequest{
+		// CoreVehicleId:                      uuid.New().String(),
+		CoreVehicleId:                      coreVehicleId,
+		Longitude:                          kafkaMessage.Longitude,
+		Latitude:                           kafkaMessage.Latitude,
+		Altitude:                           kafkaMessage.Altitude,
+		Satellites:                         kafkaMessage.Satellites,
+		HighResolutionTotalVehicleDistance: kafkaMessage.HighResolutionTotalVehicleDistance,
+		Ts:                                 kafkaMessage.Ts,
+		Speed:                              kafkaMessage.Speed,
+		FuelLevel:                          kafkaMessage.FuelLevel,
+		BatteryLevel:                       kafkaMessage.BatteryLevel,
+	}
+
+	// Преобразуем структуру в JSON
+	jsonData, err := json.Marshal(event)
+	if err != nil {
+		log.Fatalf("Ошибка при маршализации JSON: %v", err)
+	}
+	fmt.Printf("jsonData: %#v Type: %v\n", string(jsonData), reflect.TypeOf(jsonData))
+
+	// Создаем PATCH-запрос
+	req2, err := http.NewRequest("PATCH", "https://api.dev.vlm.dpkapp.ru/vst/states/", strings.NewReader(string(jsonData)))
+	if err != nil {
+		log.Fatalf("Ошибка при создании PATCH-запроса: %v", err)
+	}
+
+	// Устанавливаем заголовок Content-Type
+	req2.Header.Set("Content-Type", "application/json")
+
+	// Отправляем запрос
+	resp2, err := client.Do(req2)
+	if err != nil {
+		log.Fatalf("Ошибка при отправке запроса: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	// Получите код статуса ответа
+	statusCode2 := resp2.StatusCode
+	fmt.Println("Response Status Code:", statusCode2)
+
+	// Читаем тело ответа
+	body2, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		log.Fatalf("Ошибка при чтении ответа: %v", err)
+	}
+
+	// Выводим тело ответа
+	log.Println("Ответ от сервера:", string(body2))
 	return nil
 }
