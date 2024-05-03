@@ -1,7 +1,6 @@
 package integrations
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"events_consumer/internal/config"
 	"events_consumer/internal/models"
@@ -25,13 +24,7 @@ func LoadCoreVehicle(cfg *config.Config) {
 		log.Fatal(err)
 	}
 
-	// Создайте новый Transport с отключенной проверкой SSL
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-
-	// Создайте клиент HTTP с настроенным Transport
-	client := &http.Client{Transport: tr}
+	client := utils.CreateClient()
 
 	pages, err := checkCoreApi(urlVehicleCore, cfg.CORE_API_KEY, client)
 	if err != nil {
