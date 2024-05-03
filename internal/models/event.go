@@ -1,19 +1,5 @@
 package models
 
-type User struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type Notification map[string]interface{}
-
-// 	Msg1 string `string:"msg1"`
-// 	Msg2 string `string:"msg2"`
-// 	// From    User   `json:"from"`
-// 	// To      User   `json:"to"`
-// 	// Message string `json:"message"`
-// }
-
 type KafkaMessage struct {
 	CloudVehicleID                     string  `json:"vehicle_id"`
 	TraceID                            string  `json:"trace_id"`
@@ -21,11 +7,11 @@ type KafkaMessage struct {
 	Latitude                           float64 `json:"latitude"`
 	Altitude                           int     `json:"altitude"`
 	Satellites                         int     `json:"satellites"`
-	HighResolutionTotalVehicleDistance int     `json:"high_resolution_total_vehicle_distance"`
+	HighResolutionTotalVehicleDistance float64 `json:"high_resolution_total_vehicle_distance"`
 	CurrentMileage                     int     `json:"currentMileage"`
 	Ts                                 int64   `json:"ts"`
 	Speed                              int     `json:"speed"`
-	FuelLevel                          int     `json:"fuelLevel"`
+	FuelLevel                          float64 `json:"fuelLevel"`
 	BatteryLevel                       float64 `json:"batteryLevel"`
 }
 
@@ -38,7 +24,7 @@ type VehicleStateUpdateRequest struct {
 	HighResolutionTotalVehicleDistance int     `json:"vehicle_distance"`
 	Ts                                 int64   `json:"external_ts"`
 	Speed                              int     `json:"speed"`
-	FuelLevel                          int     `json:"fuel_level_percent"`
+	FuelLevel                          float64 `json:"fuel_level_percent"`
 	BatteryLevel                       float64 `json:"car_battery_level"`
 }
 
@@ -53,11 +39,11 @@ type TelemetryEventRequest struct {
 	Latitude                           float64 `json:"latitude"`
 	Altitude                           int     `json:"altitude"`
 	Satellites                         int     `json:"satellites"`
-	HighResolutionTotalVehicleDistance int     `json:"high_resolution_total_vehicle_distance"`
+	HighResolutionTotalVehicleDistance float64 `json:"high_resolution_total_vehicle_distance"`
 	CurrentMileage                     int     `json:"current_mileage"`
 	Ts                                 int64   `json:"ts"`
 	Speed                              int     `json:"speed"`
-	FuelLevel                          int     `json:"fuel_level"`
+	FuelLevel                          float64 `json:"fuel_level"`
 	BatteryLevel                       float64 `json:"battery_level"`
 }
 

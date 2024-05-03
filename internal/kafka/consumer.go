@@ -32,6 +32,7 @@ func ConsumerMain(cfg *config.Config) {
 // setupConsumerGroup sets up a Sarama consumer group to consume Kafka messages
 // and handle them with the Consumer struct.
 func setupConsumerGroup(ctx context.Context, cfg *config.Config) {
+
 	consumerGroup, err := initializeConsumerGroup(cfg)
 	if err != nil {
 		log.Printf("initialization error: %v", err)
@@ -55,6 +56,7 @@ func setupConsumerGroup(ctx context.Context, cfg *config.Config) {
 }
 
 func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
+	fmt.Printf("Initializing kafka bootstrap server = %s, topic = %s, consumer group = %s\n", cfg.KAFKA_BOOTSTRAP_SERVER, cfg.KAFKA_TOPIC, cfg.KAFKA_CONSUMER_GROUP)
 	config := sarama.NewConfig()
 
 	consumerGroup, err := sarama.NewConsumerGroup(
@@ -71,12 +73,14 @@ func (consumer *Consumer) ConsumeClaim(
 
 	client := utils.CreateClient()
 
+	fmt.Println("start listening topic for messages")
+
 	for msg := range claim.Messages() {
 
 		var kafkaMessage models.KafkaMessage
 		err := json.Unmarshal(msg.Value, &kafkaMessage)
 		if err != nil {
-			log.Printf("Ошибка при парсинге сообщения: msg = %s, err = %v", msg.Value, err)
+			log.Printf("Ошибка при парсинге сообщения: msg = %s, err = %v\n", msg.Value, err)
 			continue
 		}
 
@@ -102,7 +106,7 @@ func sendVstRequest(coreVehicleId string, kafkaMessage models.KafkaMessage, clie
 		Latitude:                           kafkaMessage.Latitude,
 		Altitude:                           kafkaMessage.Altitude,
 		Satellites:                         kafkaMessage.Satellites,
-		HighResolutionTotalVehicleDistance: kafkaMessage.HighResolutionTotalVehicleDistance,
+		HighResolutionTotalVehicleDistance: int(kafkaMessage.HighResolutionTotalVehicleDistance),
 		Ts:                                 kafkaMessage.Ts,
 		Speed:                              kafkaMessage.Speed,
 		FuelLevel:                          kafkaMessage.FuelLevel,
