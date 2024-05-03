@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"events_consumer/internal/config"
 	"events_consumer/internal/models"
+	"events_consumer/internal/utils"
 	"fmt"
 	"io"
 	"log"
@@ -17,7 +18,8 @@ import (
 	"net/url"
 )
 
-func LoadCoreVehicle(cfg *config.Config, cache *ttlcache.Cache[string, string]) {
+func LoadCoreVehicle(cfg *config.Config) {
+
 	urlVehicleCore, err := url.JoinPath(cfg.CORE_HOST, cfg.CORE_VEHICLE_SERVICE_PATH)
 	if err != nil {
 		log.Fatal(err)
@@ -37,7 +39,7 @@ func LoadCoreVehicle(cfg *config.Config, cache *ttlcache.Cache[string, string]) 
 	}
 	fmt.Printf("pages: %#v Type: %v\n", pages, reflect.TypeOf(pages))
 
-	saveVehiclesToCache(cache, urlVehicleCore, cfg.CORE_API_KEY, int(pages), client)
+	saveVehiclesToCache(urlVehicleCore, cfg.CORE_API_KEY, int(pages), client)
 }
 
 func checkCoreApi(url string, apiKey string, client *http.Client) (int64, error) {
@@ -52,18 +54,19 @@ func checkCoreApi(url string, apiKey string, client *http.Client) (int64, error)
 	return pages, nil
 }
 
-func saveVehiclesToCache(cache *ttlcache.Cache[string, string], url string, apiKey string, pages int, client *http.Client) {
-	for i := 1; i <= 10; i++ {
-		// for i := 1; i <= pages; i++ {
+func saveVehiclesToCache(url string, apiKey string, pages int, client *http.Client) {
+	// for i := 1; i <= 1; i++ {
+	for i := 1; i <= pages; i++ {
 		coreResponse, err := getCoreVehicles(url, apiKey, &i, client)
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, item := range coreResponse.Result.Items {
-			cache.Set(item.KmclVehicleID, item.ID, ttlcache.NoTTL)
+			utils.CacheMain.Set(item.KmclVehicleID, item.ID, ttlcache.NoTTL)
 			fmt.Printf("Сохранили машину в кэш kmcl_vehicle_id = %s, core_vehicle_id = %s\n", item.KmclVehicleID, item.ID)
 		}
 	}
+
 }
 
 func getCoreVehicles(url string, apiKey string, page *int, client *http.Client) (models.CoreResponse, error) {

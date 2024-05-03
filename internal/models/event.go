@@ -15,7 +15,7 @@ type Notification map[string]interface{}
 // }
 
 type KafkaMessage struct {
-	VehicleID                          string  `json:"vehicle_id"`
+	CloudVehicleID                     string  `json:"vehicle_id"`
 	TraceID                            string  `json:"trace_id"`
 	Longitude                          float64 `json:"longitude"`
 	Latitude                           float64 `json:"latitude"`
