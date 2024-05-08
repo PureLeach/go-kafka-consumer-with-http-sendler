@@ -71,6 +71,7 @@ func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
 func (consumer *Consumer) ConsumeClaim(
 	sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 
+	cfg := config.ConfigLoad()
 	client := utils.CreateClient()
 
 	fmt.Println("start listening topic for messages")
@@ -88,7 +89,7 @@ func (consumer *Consumer) ConsumeClaim(
 		if cacheCoreVehicleId != nil {
 			coreVehicleId := cacheCoreVehicleId.Value()
 			fmt.Printf("coreVehicleId: %#v Type: %v\n", coreVehicleId, reflect.TypeOf(coreVehicleId))
-			sendVstRequest(coreVehicleId, kafkaMessage, client)
+			sendVstRequest(coreVehicleId, kafkaMessage, client, cfg)
 		} else {
 			fmt.Println("Не нашли элемент в кэше")
 		}
@@ -98,7 +99,7 @@ func (consumer *Consumer) ConsumeClaim(
 	return nil
 }
 
-func sendVstRequest(coreVehicleId string, kafkaMessage models.KafkaMessage, client *http.Client) error {
+func sendVstRequest(coreVehicleId string, kafkaMessage models.KafkaMessage, client *http.Client, cfg *config.Config) error {
 
 	event := models.VehicleStateUpdateRequest{
 		CoreVehicleId:                      coreVehicleId,
@@ -121,7 +122,7 @@ func sendVstRequest(coreVehicleId string, kafkaMessage models.KafkaMessage, clie
 	fmt.Printf("jsonData: %#v Type: %v\n", string(jsonData), reflect.TypeOf(jsonData))
 
 	// Создаем PATCH-запрос
-	req, err := http.NewRequest("PATCH", "https://api.dev.vlm.dpkapp.ru/vst/states/", strings.NewReader(string(jsonData)))
+	req, err := http.NewRequest("PATCH", cfg.VEHICLE_STATE_SERVICE_URL, strings.NewReader(string(jsonData)))
 	if err != nil {
 		log.Fatalf("Ошибка при создании PATCH-запроса: %v", err)
 	}
