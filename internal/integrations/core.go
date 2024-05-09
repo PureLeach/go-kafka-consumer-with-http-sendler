@@ -80,7 +80,7 @@ func asyncSaveVehiclesToCache(url string, apiKey string, pages int, client *http
 	}
 
 	for err := range errors {
-		log.Println("Error saving the vehicle in the cache:", err)
+		log.Fatalln("Error saving the vehicle in the cache:", err)
 	}
 
 }
@@ -89,7 +89,7 @@ func syncSaveVehiclesToCache(url string, apiKey string, pages int, client *http.
 	for i := 1; i <= pages; i++ {
 		coreResponse, err := getCoreVehicles(url, apiKey, &i, client)
 		if err != nil {
-			log.Println("Error saving the vehicle in the cache:", err)
+			log.Fatalln("Error saving the vehicle in the cache:", err)
 		}
 		for _, item := range coreResponse.Result.Items {
 			utils.CacheMain.Set(item.KmclVehicleID, item.ID, ttlcache.NoTTL)
