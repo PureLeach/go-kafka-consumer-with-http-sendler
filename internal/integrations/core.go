@@ -5,11 +5,10 @@ import (
 	"events_consumer/internal/config"
 	"events_consumer/internal/models"
 	"events_consumer/internal/utils"
-	"fmt"
 	"io"
 	"log"
-	"reflect"
 	"strconv"
+	"sync"
 
 	"github.com/jellydator/ttlcache/v3"
 
@@ -30,13 +29,13 @@ func LoadCoreVehicle(cfg *config.Config) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("pages: %#v Type: %v\n", pages, reflect.TypeOf(pages))
 
-	saveVehiclesToCache(urlVehicleCore, cfg.CORE_API_KEY, int(pages), client)
+	// syncSaveVehiclesToCache(urlVehicleCore, cfg.CORE_API_KEY, int(pages), client)
+	asyncSaveVehiclesToCache(urlVehicleCore, cfg.CORE_API_KEY, int(pages), client)
 }
 
 func checkCoreApi(url string, apiKey string, client *http.Client) (int64, error) {
-	println("Попытка получить все машины из сервиса core url = %s", url)
+	log.Printf("Trying to get all vehicles from the core service. url = %s\n", url)
 
 	coreResponse, err := getCoreVehicles(url, apiKey, nil, client)
 	if err != nil {
@@ -47,63 +46,91 @@ func checkCoreApi(url string, apiKey string, client *http.Client) (int64, error)
 	return pages, nil
 }
 
-func saveVehiclesToCache(url string, apiKey string, pages int, client *http.Client) {
-	// for i := 1; i <= 1; i++ {
+func asyncSaveVehiclesToCache(url string, apiKey string, pages int, client *http.Client) {
+	var wg sync.WaitGroup
+	wg.Add(pages)
+
+	results := make(chan models.CoreResponse, pages)
+	errors := make(chan error, pages)
+
+	for i := 1; i <= pages; i++ {
+		go func(page int) {
+			defer wg.Done()
+
+			coreResponse, err := getCoreVehicles(url, apiKey, &page, client)
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- coreResponse
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+		close(errors)
+	}()
+
+	for coreResponse := range results {
+		for _, item := range coreResponse.Result.Items {
+			utils.CacheMain.Set(item.KmclVehicleID, item.ID, ttlcache.NoTTL)
+			log.Printf("Saved the vehicle in the cache. kmcl_vehicle_id = %s, core_vehicle_id = %s\n", item.KmclVehicleID, item.ID)
+		}
+	}
+
+	for err := range errors {
+		log.Println("Error saving the vehicle in the cache:", err)
+	}
+
+}
+
+func syncSaveVehiclesToCache(url string, apiKey string, pages int, client *http.Client) {
 	for i := 1; i <= pages; i++ {
 		coreResponse, err := getCoreVehicles(url, apiKey, &i, client)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error saving the vehicle in the cache:", err)
 		}
 		for _, item := range coreResponse.Result.Items {
 			utils.CacheMain.Set(item.KmclVehicleID, item.ID, ttlcache.NoTTL)
-			fmt.Printf("Сохранили машину в кэш kmcl_vehicle_id = %s, core_vehicle_id = %s\n", item.KmclVehicleID, item.ID)
+			log.Printf("Saved the vehicle in the cache. kmcl_vehicle_id = %s, core_vehicle_id = %s\n", item.KmclVehicleID, item.ID)
 		}
 	}
 
 }
 
 func getCoreVehicles(url string, apiKey string, page *int, client *http.Client) (models.CoreResponse, error) {
-
-	// Создайте новый запрос GET с параметрами
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Println("Error creating GET request:", err)
+		log.Println("Error creating GET request:", err)
 	}
 
-	// Добавьте заголовок "X-Api-Key"
 	req.Header.Set("X-Api-Key", apiKey)
 
 	if page != nil {
-		// Добавьте параметр "page"
 		q := req.URL.Query()
 		q.Add("page", strconv.Itoa(*page))
 		req.URL.RawQuery = q.Encode()
 	}
 
-	// Выполните запрос
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Error sending GET request:", err)
+		log.Println("Error sending GET request:", err)
 	}
 	defer resp.Body.Close()
 
-	// Прочитайте тело ответа, если это необходимо
-	// Например, для прочтения JSON ответа можно использовать json.Decoder
-
-	// Получите код статуса ответа
 	statusCode := resp.StatusCode
-	fmt.Println("Response Status Code:", statusCode)
+	log.Println("Response Status Code:", statusCode)
 
-	// Читаем тело ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Ошибка при чтении ответа: %v", err)
+		log.Fatalf("Error reading the response: %v", err)
 	}
 
 	var coreResponse models.CoreResponse
 	coreErr := json.Unmarshal(body, &coreResponse)
 	if coreErr != nil {
-		log.Printf("Ошибка при парсинге сообщения: msg = %s, err = %v", string(body), coreErr)
+		log.Printf("Error parsing the message: msg = %s, err = %v", string(body), coreErr)
 	}
 	return coreResponse, nil
 }
