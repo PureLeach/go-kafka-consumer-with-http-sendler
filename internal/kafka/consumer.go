@@ -2,15 +2,16 @@ package kafka
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"events_consumer/internal/config"
 	"events_consumer/internal/models"
-	"events_consumer/internal/utils"
 
 	"github.com/IBM/sarama"
 )
@@ -53,14 +54,55 @@ func setupConsumerGroup(ctx context.Context, cfg *config.Config) {
 	}
 }
 
+func NewTLSConfig(clientCertFile, clientKeyFile, caCertFile string) (*tls.Config, error) {
+	tlsConfig := tls.Config{}
+
+	// Load client cert
+	cert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+	if err != nil {
+		return &tlsConfig, err
+	}
+	tlsConfig.Certificates = []tls.Certificate{cert}
+
+	// Load CA cert
+	caCert, err := os.ReadFile(caCertFile)
+	if err != nil {
+		return &tlsConfig, err
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	tlsConfig.RootCAs = caCertPool
+
+	// tlsConfig.BuildNameToCertificate()
+	return &tlsConfig, err
+}
+
 func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
 	log.Printf("Initializing kafka bootstrap server = %s, topic = %s, consumer group = %s\n", cfg.KAFKA_BOOTSTRAP_SERVER, cfg.KAFKA_TOPIC, cfg.KAFKA_CONSUMER_GROUP)
+
+	// This can be used on test server if domain does not match cert:
+	// tlsConfig.InsecureSkipVerify = true
+
 	config := sarama.NewConfig()
+
+	if cfg.SECURITY_PROTOCOL == "SSL" {
+		tlsConfig, err := NewTLSConfig(cfg.SSL_CERTIFICATE_PATH,
+			cfg.SSL_KEY_PATH,
+			cfg.SSL_CA_PATH)
+		if err != nil {
+			log.Fatal(err)
+		}
+		config.Net.TLS.Enable = true
+		config.Net.TLS.Config = tlsConfig
+	} else if cfg.SECURITY_PROTOCOL == "PLAINTEXT" {
+		config.Net.TLS.Enable = false
+
+	}
 
 	consumerGroup, err := sarama.NewConsumerGroup(
 		[]string{cfg.KAFKA_BOOTSTRAP_SERVER}, cfg.KAFKA_CONSUMER_GROUP, config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize consumer group: %w", err)
+		log.Fatal(err)
 	}
 
 	return consumerGroup, nil
@@ -69,13 +111,13 @@ func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
 func (consumer *Consumer) ConsumeClaim(
 	sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 
-	cfg := config.ConfigLoad()
-	client := utils.CreateClient()
+	// cfg := config.ConfigLoad()
+	// client := utils.CreateClient()
 
 	log.Println("start listening topic for messages")
 
 	// Creating a channel with a fixed size to limit the number of simultaneous requests
-	requests := make(chan struct{}, 100) // for example, let's limit up to 100 requests at a time
+	// requests := make(chan struct{}, 100) // for example, let's limit up to 100 requests at a time
 
 	for msg := range claim.Messages() {
 		var kafkaMessage models.KafkaMessage
@@ -85,20 +127,23 @@ func (consumer *Consumer) ConsumeClaim(
 			continue
 		}
 
-		cacheCoreVehicleId := utils.CacheMain.Get(kafkaMessage.CloudVehicleID)
-		if cacheCoreVehicleId != nil {
-			coreVehicleId := cacheCoreVehicleId.Value()
+		x := kafkaMessage.CloudVehicleID
+		log.Printf("kafkaMessage.CloudVehicleID = %s\n", x)
 
-			// Sending a request to the channel
-			requests <- struct{}{}
-			go func() {
-				sendVstRequest(coreVehicleId, kafkaMessage, client, cfg)
-				// After executing the request, we extract the signal from the channel
-				<-requests
-			}()
-		} else {
-			log.Println("The item was not found in the cache")
-		}
+		// cacheCoreVehicleId := utils.CacheMain.Get(kafkaMessage.CloudVehicleID)
+		// if cacheCoreVehicleId != nil {
+		// 	coreVehicleId := cacheCoreVehicleId.Value()
+
+		// 	// Sending a request to the channel
+		// 	requests <- struct{}{}
+		// 	go func() {
+		// 		sendVstRequest(coreVehicleId, kafkaMessage, client, cfg)
+		// 		// After executing the request, we extract the signal from the channel
+		// 		<-requests
+		// 	}()
+		// } else {
+		// 	log.Println("The item was not found in the cache")
+		// }
 
 		sess.MarkMessage(msg, "")
 	}

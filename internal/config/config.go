@@ -11,6 +11,11 @@ type Config struct {
 	KAFKA_TOPIC            string `env:"KAFKA_TOPIC" env-required:"true"`
 	KAFKA_CONSUMER_GROUP   string `env:"KAFKA_CONSUMER_GROUP" env-required:"true"`
 
+	SECURITY_PROTOCOL    string `env:"SECURITY_PROTOCOL" env-required:"true"`
+	SSL_CA_PATH          string `env:"SSL_CA_PATH" env-required:"false"`
+	SSL_CERTIFICATE_PATH string `env:"SSL_CERTIFICATE_PATH" env-required:"false"`
+	SSL_KEY_PATH         string `env:"SSL_KEY_PATH" env-required:"false"`
+
 	CORE_HOST                 string `env:"CORE_HOST" env-required:"true"`
 	CORE_VEHICLE_SERVICE_PATH string `env:"CORE_VEHICLE_SERVICE_PATH" env-required:"true"`
 	CORE_API_KEY              string `env:"CORE_API_KEY" env-required:"true"`
