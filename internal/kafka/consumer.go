@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"events_consumer/internal/clickhouse"
 	"events_consumer/internal/config"
 	"events_consumer/internal/models"
 
@@ -111,13 +113,28 @@ func initializeConsumerGroup(cfg *config.Config) (sarama.ConsumerGroup, error) {
 func (consumer *Consumer) ConsumeClaim(
 	sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 
-	// cfg := config.ConfigLoad()
+	log.Println("Инициализация клиента ClickHouse")
+	cfg := config.ConfigLoad()
+
+	// Подключаемся к ClickHouse и создаём таблицу
+	conn, err := clickhouse.SetupClickHouse(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
 	// client := utils.CreateClient()
 
 	log.Println("start listening topic for messages")
 
 	// Creating a channel with a fixed size to limit the number of simultaneous requests
 	// requests := make(chan struct{}, 100) // for example, let's limit up to 100 requests at a time
+
+	// Настраиваем буфер и канал для накопления данных
+	batchSize := 10000
+	// data := make([][]interface{}, 0, batchSize)
+	data := make([]models.KafkaMessage, 0, batchSize)
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
 
 	for msg := range claim.Messages() {
 		var kafkaMessage models.KafkaMessage
@@ -126,9 +143,18 @@ func (consumer *Consumer) ConsumeClaim(
 			log.Printf("Error parsing the message: msg = %s, err = %v\n", msg.Value, err)
 			continue
 		}
+		data = append(data, kafkaMessage)
+		// Если накопили достаточный объём данных, записываем их в ClickHouse
+		if len(data) >= batchSize {
+			if err := clickhouse.InsertBatch(conn, data); err != nil {
+				log.Println("Ошибка при записи данных:", err)
+			}
+			data = data[:0] // Очищаем буфер
+			log.Println("Данные записаны в ClickHouse")
+		}
 
-		x := kafkaMessage.CloudVehicleID
-		log.Printf("kafkaMessage.CloudVehicleID = %s\n", x)
+		// x := kafkaMessage.CloudVehicleID
+		// log.Printf("kafkaMessage.CloudVehicleID = %s\n", x)
 
 		// cacheCoreVehicleId := utils.CacheMain.Get(kafkaMessage.CloudVehicleID)
 		// if cacheCoreVehicleId != nil {
@@ -152,16 +178,16 @@ func (consumer *Consumer) ConsumeClaim(
 
 func sendVstRequest(coreVehicleId string, kafkaMessage models.KafkaMessage, client *http.Client, cfg *config.Config) {
 	event := models.VehicleStateUpdateRequest{
-		CoreVehicleId:                      coreVehicleId,
-		Longitude:                          kafkaMessage.Longitude,
-		Latitude:                           kafkaMessage.Latitude,
-		Altitude:                           kafkaMessage.Altitude,
-		Satellites:                         kafkaMessage.Satellites,
-		HighResolutionTotalVehicleDistance: int(kafkaMessage.HighResolutionTotalVehicleDistance),
-		Ts:                                 kafkaMessage.Ts,
-		Speed:                              kafkaMessage.Speed,
-		FuelLevel:                          kafkaMessage.FuelLevel,
-		BatteryLevel:                       kafkaMessage.BatteryLevel,
+		CoreVehicleId: coreVehicleId,
+		Longitude:     kafkaMessage.Longitude,
+		Latitude:      kafkaMessage.Latitude,
+		// Altitude:                           kafkaMessage.Altitude,
+		// Satellites:                         kafkaMessage.Satellites,
+		// HighResolutionTotalVehicleDistance: int(kafkaMessage.HighResolutionTotalVehicleDistance),
+		Ts: kafkaMessage.Ts,
+		// Speed: kafkaMessage.Speed,
+		// FuelLevel:                          kafkaMessage.FuelLevel,
+		// BatteryLevel:                       kafkaMessage.BatteryLevel,
 	}
 
 	jsonData, err := json.Marshal(event)

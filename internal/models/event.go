@@ -1,18 +1,20 @@
 package models
 
 type KafkaMessage struct {
-	CloudVehicleID                     string  `json:"vehicle_id"`
-	TraceID                            string  `json:"trace_id"`
-	Longitude                          float64 `json:"longitude"`
-	Latitude                           float64 `json:"latitude"`
-	Altitude                           int     `json:"altitude"`
-	Satellites                         int     `json:"satellites"`
-	HighResolutionTotalVehicleDistance float64 `json:"high_resolution_total_vehicle_distance"`
-	CurrentMileage                     int     `json:"currentMileage"`
-	Ts                                 int64   `json:"ts"`
-	Speed                              int     `json:"speed"`
-	FuelLevel                          float64 `json:"fuelLevel"`
-	BatteryLevel                       float64 `json:"batteryLevel"`
+	CloudVehicleID string  `json:"vehicle_id"`
+	TraceID        string  `json:"trace_id"`
+	Longitude      float64 `json:"longitude"`
+	Latitude       float64 `json:"latitude"`
+	Ts             int64   `json:"ts"`
+	Time           string  `json:"time"`
+	Vin            string  `json:"vin"`
+	// Speed          int     `json:"speed"`
+	// Altitude       int     `json:"altitude"`
+	// Satellites                         int     `json:"satellites"`
+	// HighResolutionTotalVehicleDistance float64 `json:"high_resolution_total_vehicle_distance"`
+	// CurrentMileage                     int     `json:"currentMileage"`
+	// FuelLevel                          float64 `json:"fuelLevel"`
+	// BatteryLevel                       float64 `json:"batteryLevel"`
 }
 
 type VehicleStateUpdateRequest struct {

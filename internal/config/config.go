@@ -21,6 +21,12 @@ type Config struct {
 	CORE_API_KEY              string `env:"CORE_API_KEY" env-required:"true"`
 
 	VEHICLE_STATE_SERVICE_URL string `env:"VEHICLE_STATE_SERVICE_URL" env-required:"true"`
+
+	CLICKHOUSE_HOST     string `env:"CLICKHOUSE_HOST" env-required:"true"`
+	CLICKHOUSE_PORT     int    `env:"CLICKHOUSE_PORT" env-required:"true"`
+	CLICKHOUSE_DBNAME   string `env:"CLICKHOUSE_DBNAME" env-required:"true"`
+	CLICKHOUSE_USERNAME string `env:"CLICKHOUSE_USERNAME" env-required:"true"`
+	CLICKHOUSE_PASSWORD string `env:"CLICKHOUSE_PASSWORD" env-required:"true"`
 }
 
 func ConfigLoad() *Config {
